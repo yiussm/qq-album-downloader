@@ -1,0 +1,51 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [created]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: macos
+            ext: ''
+          - os: windows-latest
+            artifact: windows
+            ext: .exe
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build macOS app
+        if: matrix.os == 'macos-latest'
+        run: |
+          pyinstaller --name="QQ相册下载工具" --windowed --onedir --noconfirm --clean qq_photo_v4.py
+
+      - name: Build Windows exe
+        if: matrix.os == 'windows-latest'
+        run: |
+          pyinstaller --name="QQ相册下载工具" --windowed --onedir --noconfirm --clean qq_photo_v4.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: QQ相册下载工具-${{ matrix.artifact }}
+          path: dist/

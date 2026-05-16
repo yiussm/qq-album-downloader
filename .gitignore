@@ -1,0 +1,7 @@
+__pycache__/
+build/
+dist/
+*.spec
+*.pyc
+.DS_Store
+qq_debug_config.txt
