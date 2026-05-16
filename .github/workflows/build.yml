@@ -1,10 +1,8 @@
-name: Build
+name: Build & Release
 
 on:
   push:
     branches: [main]
-  release:
-    types: [created]
 
 jobs:
   build:
@@ -13,10 +11,8 @@ jobs:
         include:
           - os: macos-latest
             artifact: macos
-            ext: ''
           - os: windows-latest
             artifact: windows
-            ext: .exe
 
     runs-on: ${{ matrix.os }}
 
@@ -38,14 +34,68 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           pyinstaller --name="QQ相册下载工具" --windowed --onedir --noconfirm --clean 源码/qq_photo_v4.py
+          cd dist && zip -r "../QQ相册下载工具-macOS.zip" "QQ相册下载工具.app"
 
       - name: Build Windows exe
         if: matrix.os == 'windows-latest'
         run: |
           pyinstaller --name="QQ相册下载工具" --windowed --onedir --noconfirm --clean 源码/qq_photo_v4.py
+          Compress-Archive -Path "dist/QQ相册下载工具/*" -DestinationPath "QQ相册下载工具-Windows.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: QQ相册下载工具-${{ matrix.artifact }}
-          path: dist/
+          path: QQ相册下载工具-${{ matrix.artifact }}.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: QQ相册下载工具-*
+          path: release-assets
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          # 获取上次 release 以来的 commits
+          LAST_TAG=$(git tag --sort=-creatordate | head -1)
+          if [ -n "$LAST_TAG" ]; then
+            RANGE="${LAST_TAG}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+          echo "## 📝 更新内容" > /tmp/notes.md
+          echo "" >> /tmp/notes.md
+          git log $RANGE --pretty=format:"- %s (%h)" --no-merges >> /tmp/notes.md || echo "- 初始版本" >> /tmp/notes.md
+          echo "" >> /tmp/notes.md
+          echo "---" >> /tmp/notes.md
+          echo "**构建时间:** $(date '+%Y-%m-%d %H:%M')" >> /tmp/notes.md
+          cat /tmp/notes.md
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          cat /tmp/notes.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create or update latest release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 删除旧的 latest release（如果存在）
+          gh release delete latest --yes 2>/dev/null || true
+          git push origin :refs/tags/latest 2>/dev/null || true
+          
+          # 创建新 release，将所有 zip 作为附件
+          gh release create latest \
+            --title "QQ相册下载工具 - 最新版" \
+            --notes-file /tmp/notes.md \
+            $(find release-assets -name '*.zip')
+          
+          echo "✅ Release created: $(gh release view latest --json url -q .url)"
