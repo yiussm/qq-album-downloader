@@ -12,8 +12,10 @@ jobs:
     strategy:
       matrix:
         include:
+          - os: macos-13
+            artifact: macos-x64
           - os: macos-latest
-            artifact: macos
+            artifact: macos-arm64
           - os: windows-latest
             artifact: windows
 
@@ -34,22 +36,24 @@ jobs:
           pip install pyinstaller
 
       - name: Build macOS app
-        if: matrix.os == 'macos-latest'
+        if: runner.os == 'macOS'
         run: |
           pyinstaller --name="QQ相册下载工具" --windowed --onedir --noconfirm --clean 源码/qq_photo_v4.py
-          cd dist && zip -r "../QQ相册下载工具-macOS.zip" "QQ相册下载工具.app"
+          cd dist && zip -r "../qq-album-downloader-${{ matrix.artifact }}.zip" "QQ相册下载工具.app"
 
       - name: Build Windows exe
-        if: matrix.os == 'windows-latest'
+        if: runner.os == 'Windows'
         run: |
           pyinstaller --name="QQ相册下载工具" --windowed --onedir --noconfirm --clean 源码/qq_photo_v4.py
-          Compress-Archive -Path "dist/QQ相册下载工具/*" -DestinationPath "QQ相册下载工具-Windows.zip"
+          Compress-Archive -Path "dist/QQ相册下载工具/*" -DestinationPath "qq-album-downloader-windows.zip"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: QQ相册下载工具-${{ matrix.artifact }}
-          path: QQ相册下载工具-${{ matrix.artifact }}.zip
+          name: qq-album-downloader-${{ matrix.artifact }}
+          path: |
+            qq-album-downloader-${{ matrix.artifact }}.zip
+            qq-album-downloader-windows.zip
 
   release:
     needs: build
@@ -63,13 +67,12 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: QQ相册下载工具-*
+          pattern: qq-album-downloader-*
           path: release-assets
 
       - name: Generate release notes
         id: notes
         run: |
-          # 获取上次 release 以来的 commits
           LAST_TAG=$(git tag --sort=-creatordate | head -1)
           if [ -n "$LAST_TAG" ]; then
             RANGE="${LAST_TAG}..HEAD"
@@ -91,14 +94,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 删除旧的 latest release（如果存在）
           gh release delete latest --yes 2>/dev/null || true
           git push origin :refs/tags/latest 2>/dev/null || true
-          
-          # 创建新 release，将所有 zip 作为附件
           gh release create latest \
             --title "QQ相册下载工具 - 最新版" \
             --notes-file /tmp/notes.md \
             $(find release-assets -name '*.zip')
-          
-          echo "✅ Release created: $(gh release view latest --json url -q .url)"
+          echo "✅ Release created"
